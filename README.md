@@ -38,14 +38,6 @@ To create the Docker hosted repository and install the Docker package, add a sin
 include 'docker'
 ```
 
-If you are using Ubuntu, all the required Kernel extensions are installed. To disable this feature, add the following code to the manifest file:
-
-```puppet
-class { 'docker':
-  manage_kernel => false,
-}
-```
-
 To configure package sources independently and disable automatically including sources, add the following code to the manifest file:
 
 ```puppet
@@ -83,7 +75,7 @@ class { 'docker':
 }
 ```
 
-To install install Docker EE on RHEL/CentOS:
+To install Docker EE on RHEL/CentOS:
 
 ```puppet
 class { 'docker':
@@ -94,12 +86,13 @@ class { 'docker':
 ```
 
 
-For Red Hat Enterprise Linux (RHEL) based distributions, including Fedora, the docker module uses the upstream repositories. To continue using the legacy distribution packages, add the following code to the manifest file:
+For Red Hat Enterprise Linux (RHEL) based distributions, including Fedora, the docker module uses the upstream repositories. To continue using the legacy distribution packages in the CentOS Extras repo, add the following code to the manifest file:
 
 ```puppet
 class { 'docker':
   use_upstream_package_source => false,
-  package_engine_name => 'docker-name',
+  service_overrides_template  => false,
+  docker_ce_package_name      => 'docker',
 }
 ```
 
@@ -108,7 +101,7 @@ To use the CE packages
 ```puppet
 class { 'docker':
   use_upstream_package_source => false,
-  package_ce_name => 'docker-ce',
+  docker_package_ce_name      => 'docker-ce',
 }
 ```
 
@@ -284,11 +277,14 @@ This is equivalent to running the  `docker run -d base /bin/sh -c "while true; d
 ```puppet
 docker::run { 'helloworld':
   image            => 'base',
+  detach           => true,
+  service_prefix   => 'docker-',
   command          => '/bin/sh -c "while true; do echo hello world; sleep 1; done"',
   ports            => ['4444', '4555'],
   expose           => ['4666', '4777'],
   links            => ['mysql:db'],
   net              => 'my-user-def-net',
+  disable_network  => false,
   volumes          => ['/var/lib/couchdb', '/var/log'],
   volumes_from     => '6446ea52fbc9',
   memory_limit     => '10m', # (format: '<number><unit>', where unit = b, k, m or g)
@@ -297,6 +293,7 @@ docker::run { 'helloworld':
   hostname         => 'example.com',
   env              => ['FOO=BAR', 'FOO2=BAR2'],
   env_file         => ['/etc/foo', '/etc/bar'],
+  labels           => ['com.example.foo="true"', 'com.example.bar="false"'],
   dns              => ['8.8.8.8', '8.8.4.4'],
   restart_service  => true,
   privileged       => false,
@@ -305,6 +302,8 @@ docker::run { 'helloworld':
   before_start     => 'echo "Run this on the host before starting the Docker container"',
   after            => [ 'container_b', 'mysql' ],
   depends          => [ 'container_a', 'postgres' ],
+  stop_wait_time   => 0,
+  read_only        => false,
   extra_parameters => [ '--restart=always' ],
 }
 ```
@@ -356,6 +355,14 @@ If using Hiera, you can configure the `docker::run_instance` class:
       command: '/bin/sh -c "while true; do echo hello world; sleep 1; done"'
 ```
 
+To remove a running container, add the following code to the manifest file. This will also remove the systemd service file associated with the container.
+
+'''puppet
+docker::run { 'helloworld':
+  ensure => absent,
+}
+'''
+
 ### Networks
 
 Docker 1.9.x officially supports networks. To expose the `docker_network` type, which is used to manage networks, add the following code to the manifest file:
@@ -393,6 +400,42 @@ docker::networks::networks:
 ```
 
 A defined network can be used on a `docker::run` resource with the `net` parameter.
+
+### Volumes
+
+Docker 1.9.x added support for Volumes. These are *NOT* to be confused with the legacy volumes, now known as `bind mounts`. To expose the `docker_volume` type, which is used to manage volumes, add the following code to the manifest file:
+
+```puppet
+docker_volume { 'my-volume':
+  ensure => present,
+}
+```
+
+The name value and the `ensure` parameter are required. If you do not include the `driver` value, the default `local` is used.
+
+Some of the key advantages for using `volumes` over `bind mounts` are:
+* Easier to back up or migrate than `bind mounts` (legacy volumes).
+* Managed with Docker CLI or API (Puppet type uses the CLI commands).
+* Work on both Windows and Linux.
+* More easily shared between containers.
+* Allows for the store volumes on remote hosts or cloud providers.
+* Encrypt contents of volumes.
+* Add other functionality
+* New volume's contents can be pre-populated by a container.
+
+When using the `volumes` array with `docker::run`, the command on the backend will know if it needs to use `bind mounts` or `volumes` based off the data passed to the `-v` option.
+
+Running `docker::run` with native volumes:
+
+```puppet
+docker::run { 'helloworld':
+  image   => 'ubuntu:precise',
+  command => '/bin/sh -c "while true; do echo hello world; sleep 1; done"',
+  volumes => ['my-volume:/var/log'],
+}
+```
+
+For more information on volumes see the [Docker Volumes](https://docs.docker.com/engine/admin/volumes/volumes) documentation
 
 ### Compose
 
@@ -562,6 +605,7 @@ To remove a service, add the following code to the manifest file:
 
 ```puppet
 docker::services {'redis':
+  create => false,
   ensure => 'absent',
   service_name => 'redis',
 }
@@ -573,13 +617,14 @@ To remove the service from a swarm, include the `ensure => absent` parameter and
 
 If a server is not specified, images are pushed and pulled from [index.docker.io](https://index.docker.io). To qualify your image name, create a private repository without authentication.
 
-To configure authentication for a private registry, add the following code to the manifest file:
+To configure authentication for a private registry, add the following code to the manifest file , depending on what version of Docker you are running. If you are using Docker V1.10 or earlier add the following code to the manifest file ensuring that you specify the docker version:
 
 ```puppet
 docker::registry { 'example.docker.io:5000':
   username => 'user',
   password => 'secret',
   email    => 'user@example.com',
+  version  => '<docker_version>'
 }
 ```
 
@@ -591,7 +636,25 @@ docker::registry_auth::registries:
     username: 'user1'
     password: 'secret'
     email: 'user1@example.io'
-  }
+    version: '<docker_version>'
+```
+
+If using Docker V1.11 or later the docker login e-mail flag has been deprecated [docker_change_log](https://docs.docker.com/release-notes/docker-engine/#1110-2016-04-13). Add the following code to the manifest file:
+
+```puppet
+docker::registry { 'example.docker.io:5000'}
+  username => 'user',
+  password => 'secret',
+}
+```
+
+If using hiera, configure the 'docker::registry_auth' class:
+
+```yaml
+docker::registry_auth::registries:
+  'example.docker.io:5000':
+    username: 'user1'
+    password: 'secret'
 ```
 
 To log out of a registry, add the following code to the manifest file:
@@ -599,6 +662,13 @@ To log out of a registry, add the following code to the manifest file:
 ```puppet
 docker::registry { 'example.docker.io:5000':
   ensure => 'absent',
+}
+```
+
+To set a preferred registry mirror, add the following code to the manifest file:
+```puppet
+class { 'docker':
+  registry_mirror => 'http://testmirror.io'
 }
 ```
 
@@ -634,14 +704,6 @@ Defaults to `present`.
 #### `prerequired_packages`
 
 An array of packages that are required to support Docker.
-
-#### `docker_cs`
-
-Specifies whether to use the Commercial Support (CS) Docker packages.
-
-Values `'true','false'`.
-
-Defaults to `false`.
 
 #### `tcp_bind`
 
@@ -861,14 +923,6 @@ The custom root directory for the containers.
 
 Defaults to `undefined`.
 
-#### `manage_kernel`
-
-Specifies whether to install the Kernel required by Docker.
-
-Valid values are `true`, `false`.
-
-Defaults to `true`.
-
 #### `dns`
 
 The custom dns server address.
@@ -885,7 +939,8 @@ Defaults to `undefined`.
 
 Group ownership of the unix control socket.
 
-Defaults to `undefined`.
+Default is `OS and package specific`.
+
 
 #### `extra_parameters`
 

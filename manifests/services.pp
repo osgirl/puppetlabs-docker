@@ -18,12 +18,12 @@
 #
 # [*env*]
 #  Set environment variables
-#  Defaults to undef
+#  Defaults to []
 #
 # [*label*]
 #  Service labels.
 #  This used as metdata to configure constraints etc.
-#  Defaults to undef
+#  Defaults to []
 #
 # [*publish*]
 #  Publish a port as a node port.
@@ -63,133 +63,122 @@
 #  This will allow the service to connect to the host linux socket.
 #  defaults to undef
 #
+# [*registry_mirror*]
+#  This will allow the service to set a registry mirror.
+#  defaults to undef
+#
 
 define docker::services(
-
-  $ensure = 'present',
-  $image = undef,
-  $detach = true,
-  $env = undef,
-  $service_name = undef,
-  $label = undef,
-  $publish = undef,
-  $replicas = undef,
-  $tty = false,
-  $user = undef,
-  $workdir = undef,
-  $extra_params = [],
-  $create = true,
-  $update = false,
-  $scale = false,
-  $host_socket = undef,
-  ){
+  Optional[Pattern[/^present$|^absent$/]] $ensure        = 'present',
+  Optional[Boolean] $create                              = true,
+  Optional[Boolean] $update                              = false,
+  Optional[Boolean] $scale                               = false,
+  Optional[Boolean] $detach                              = true,
+  Optional[Boolean] $tty                                 = false,
+  Optional[Array] $env                                   = [],
+  Optional[Array] $label                                 = [],
+  Optional[Array] $extra_params                          = [],
+  Variant[String,Array,Undef] $image                     = undef,
+  Variant[String,Array,Undef] $service_name              = undef,
+  Variant[String,Array,Undef] $publish                   = undef,
+  Variant[String,Array,Undef] $replicas                  = undef,
+  Variant[String,Array,Undef] $user                      = undef,
+  Variant[String,Array,Undef] $workdir                   = undef,
+  Variant[String,Array,Undef] $host_socket               = undef,
+  Variant[String,Array,Undef] $registry_mirror           = undef,
+){
 
   include docker::params
 
   $docker_command = "${docker::params::docker_command} service"
-  validate_re($ensure, '^(present|absent)$')
-  validate_string($docker_command)
-  validate_string($image)
-  validate_string($env)
-  validate_string($service_name)
-  validate_string($label)
-  validate_string($publish)
-  validate_string($replicas)
-  validate_string($user)
-  validate_string($workdir)
-  validate_string($host_socket)
-  validate_bool($detach)
-  validate_bool($tty)
-  validate_bool($create)
-  validate_bool($update)
-  validate_bool($scale)
 
   if $ensure == 'absent' {
     if $update {
-      fail('When removing a service you can not update it.')
+      fail translate(('When removing a service you can not update it.'))
     }
     if $scale {
-      fail('When removing a service you can not update it.')
+      fail translate(('When removing a service you can not update it.'))
     }
   }
 
   if $create {
-  $docker_service_create_flags = docker_service_flags({
-    detach => $detach,
-    env => $env,
-    service_name => $service_name,
-    label => $label,
-    publish => $publish,
-    replicas => $replicas,
-    tty => $tty,
-    user => $user,
-    workdir => $workdir,
-    extra_params => any2array($extra_params),
-    image => $image,
-    host_socket => $host_socket,
+    $docker_service_create_flags = docker_service_flags({
+      detach          => $detach,
+      env             => any2array($env),
+      service_name    => $service_name,
+      label           => any2array($label),
+      publish         => $publish,
+      replicas        => $replicas,
+      tty             => $tty,
+      user            => $user,
+      workdir         => $workdir,
+      extra_params    => any2array($extra_params),
+      image           => $image,
+      host_socket     => $host_socket,
+      registry_mirror => $registry_mirror,
     })
 
-  $exec_create = "${docker_command} create --name ${docker_service_create_flags}"
-  $unless_create = "docker service ls | grep -w ${service_name}"
+    $exec_create = "${docker_command} create --name ${docker_service_create_flags}"
+    $unless_create = "docker service ls | grep -w ${service_name}"
 
-  exec { 'Docker service create':
-    command     => $exec_create,
-    environment => 'HOME=/root',
-    path        => ['/bin', '/usr/bin'],
-    timeout     => 0,
-    unless      => $unless_create,
+    exec { "${title} docker service create":
+      command     => $exec_create,
+      environment => 'HOME=/root',
+      path        => ['/bin', '/usr/bin'],
+      timeout     => 0,
+      unless      => $unless_create,
     }
   }
 
   if $update {
-  $docker_service_flags = docker_service_flags({
-    detach => $detach,
-    env => $env,
-    service_name => $service_name,
-    label => $label,
-    publish => $publish,
-    replicas => $replicas,
-    tty => $tty,
-    user => $user,
-    workdir => $workdir,
-    extra_params => any2array($extra_params),
-    image => $image,
-    host_socket => $host_socket,
+    $docker_service_flags = docker_service_flags({
+      detach          => $detach,
+      env             => any2array($env),
+      service_name    => $service_name,
+      label           => any2array($label),
+      publish         => $publish,
+      replicas        => $replicas,
+      tty             => $tty,
+      user            => $user,
+      workdir         => $workdir,
+      extra_params    => any2array($extra_params),
+      image           => $image,
+      host_socket     => $host_socket,
+      registry_mirror => $registry_mirror,
     })
 
-  $exec_update = "${docker_command} update ${docker_service_flags}"
+    $exec_update = "${docker_command} update ${docker_service_flags}"
 
-  exec { 'Docker service update':
-    command     => $exec_update,
-    environment => 'HOME=/root',
-    path        => ['/bin', '/usr/bin'],
-    timeout     => 0,
+    exec { "${title} docker service update":
+      command     => $exec_update,
+      environment => 'HOME=/root',
+      path        => ['/bin', '/usr/bin'],
+      timeout     => 0,
     }
   }
 
   if $scale {
-  $docker_service_flags = docker_service_flags({
-    service_name => $service_name,
-    replicas => $replicas,
-    extra_params => any2array($extra_params),
+    $docker_service_flags = docker_service_flags({
+      service_name => $service_name,
+      replicas     => $replicas,
+      extra_params => any2array($extra_params),
     })
 
-  $exec_scale = "${docker_command} scale ${service_name}=${replicas}"
+    $exec_scale = "${docker_command} scale ${service_name}=${replicas}"
 
-  exec { 'Docker service scale':
-    command     => $exec_scale,
-    environment => 'HOME=/root',
-    path        => ['/bin', '/usr/bin'],
-    timeout     => 0,
+    exec { "${title} docker service scale":
+      command     => $exec_scale,
+      environment => 'HOME=/root',
+      path        => ['/bin', '/usr/bin'],
+      timeout     => 0,
     }
   }
 
   if $ensure == 'absent' {
-    exec { 'Remove service':
+    exec { "${title} docker service remove":
       command => "docker service rm ${service_name}",
       onlyif  => "docker service ls | grep -w ${service_name}",
       path    => ['/bin', '/usr/bin'],
     }
   }
 }
-

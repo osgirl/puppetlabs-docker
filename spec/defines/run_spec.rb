@@ -15,6 +15,7 @@ require 'spec_helper'
           :kernelrelease             => '4.4.0-21-generic',
           :operatingsystemrelease    => '16.04',
           :operatingsystemmajrelease => '16.04',
+          :os                        => { :distro => { :codename => 'wheezy' }, :family => 'Debian', :name => 'Debian', :release => { :major => '7', :full => '7.0' } } 
         } }
         initscript = '/etc/systemd/system/docker-sample.service'
         command = 'docker'
@@ -28,6 +29,7 @@ require 'spec_helper'
           :operatingsystemrelease     => '7.2',
           :operatingsystemmajrelease  => '7',
           :kernelversion              => '3.10.0',
+          :os                         => { :distro => { :codename => 'wheezy' }, :family => osfamily, :name => osfamily, :release => { :major => '7', :full => '7.0' } }
         } }
         initscript = '/etc/systemd/system/docker-sample.service'
         command = 'docker'
@@ -318,12 +320,12 @@ require 'spec_helper'
 
       context 'when passing serveral environment variables' do
         let(:params) { {'command' => 'command', 'image' => 'base', 'env' => ['FOO=BAR', 'FOO2=BAR2']} }
-        it { should contain_file(initscript).with_content(/-e FOO=BAR/).with_content(/-e FOO2=BAR2/) }
+        it { should contain_file(initscript).with_content(/-e "FOO=BAR"/).with_content(/-e "FOO2=BAR2"/) }
       end
 
       context 'when passing an environment variable' do
         let(:params) { {'command' => 'command', 'image' => 'base', 'env' => 'FOO=BAR'} }
-        it { should contain_file(initscript).with_content(/-e FOO=BAR/) }
+        it { should contain_file(initscript).with_content(/-e "FOO=BAR"/) }
       end
 
       context 'when passing serveral environment files' do
@@ -393,6 +395,11 @@ require 'spec_helper'
       context 'when running with a tty' do
         let(:params) { {'command' => 'command', 'image' => 'base', 'tty' => true} }
         it { should contain_file(initscript).with_content(/-t/) }
+      end
+
+      context 'when running with read-only image' do
+        let(:params) { {'command' => 'command', 'image' => 'base', 'read_only' => true} }
+        it { should contain_file(initscript).with_content(/--read-only=true/) }
       end
 
       context 'when passing serveral extra parameters' do
@@ -658,6 +665,7 @@ require 'spec_helper'
         it { should compile.with_all_deps }
         it { should contain_service('docker-sample').with_ensure(false) }
         it { should contain_exec("remove container docker-sample").with_command('docker rm -v sample') }
+        it { should_not contain_file('docker-sample.service')}
       end
 
     end

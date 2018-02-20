@@ -2,6 +2,7 @@ require 'rubygems'
 require 'bundler/setup'
 
 require 'puppetlabs_spec_helper/rake_tasks'
+require 'puppet_pot_generator/rake_tasks'
 
 # These gems aren't always present, for instance
 # on Travis with --without development
@@ -54,7 +55,7 @@ begin
     :syntax,
     :lint,
     :parallel_spec,
-    :metadata,
+    :metadata_lint,
   ]
 rescue LoadError # rubocop:disable Lint/HandleExceptions
 end
@@ -64,10 +65,10 @@ if Rake::Task.task_defined?('metadata_lint')
   task :metadata => :metadata_lint
 end
 
-desc 'Run syntax, lint, spec and metadata tests'
+desc 'Run syntax, lint and  metadata tests'
 task :test => [
   :syntax,
   :lint,
+  :metadata_lint,
   :spec,
-  :metadata,
 ]
